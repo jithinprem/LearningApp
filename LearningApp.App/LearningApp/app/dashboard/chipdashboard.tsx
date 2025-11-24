@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import {
   View,
-  Text,
   FlatList,
   StyleSheet,
   TouchableOpacity
 } from 'react-native';
-
-const API_BASE = 'http://192.168.31.42:8001'; // Change to your backend IP
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/themed-view';
+import { chipsApi, Chip } from '@/services/chipsApi';
 
 export default function ChipDashboardScreen() {
-  const [chips, setChips] = useState([]);
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const [chips, setChips] = useState<Chip[]>([]);
 
   const fetchChips = async () => {
     try {
-      const response = await fetch(`${API_BASE}/chips`);
-      const data = await response.json();
+      const data = await chipsApi.fetchChips();
       setChips(data);
     } catch (error) {
       console.error('Error fetching chips:', error);
@@ -26,28 +28,28 @@ export default function ChipDashboardScreen() {
     fetchChips();
   }, []);
 
-  const renderChip = ({ item }) => (
-    <View style={styles.chipItem}>
-      <Text style={styles.chipText}>{item.title}</Text>
-      <Text style={styles.chipDescription}>{item.description}</Text>
-      <Text style={styles.chipCategory}>{item.category}</Text>
-      <Text style={styles.chipTags}>Tags: {item.tags.join(', ')}</Text>
+  const renderChip = ({ item }: { item: Chip }) => (
+    <View style={[styles.chipItem, { backgroundColor: isDark ? '#333' : '#f0f0f0' }]}>
+      <ThemedText style={styles.chipText}>{item.title}</ThemedText>
+      <ThemedText style={styles.chipDescription}>{item.description}</ThemedText>
+      <ThemedText style={styles.chipCategory}>{item.category}</ThemedText>
+      <ThemedText style={styles.chipTags} lightColor="#007AFF" darkColor="#5AC8FA">Tags: {item.tags.join(', ')}</ThemedText>
     </View>
   );
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Your Chip Collections</Text>
+    <ThemedView style={styles.container}>
+      <ThemedText type="title" style={styles.title}>Your Chip Collections</ThemedText>
       <FlatList
         data={chips}
-        keyExtractor={(item) => item.id.toString()}
+        keyExtractor={(item) => item.id!.toString()}
         renderItem={renderChip}
-        ListEmptyComponent={<Text style={styles.emptyText}>No chips found. Create some in the Chip Learnings tab!</Text>}
+        ListEmptyComponent={<ThemedText style={styles.emptyText}>No chips found. Create some in the Chip Learnings tab!</ThemedText>}
       />
       <TouchableOpacity style={styles.refreshButton} onPress={fetchChips}>
-        <Text style={styles.refreshButtonText}>Refresh</Text>
+        <ThemedText style={styles.refreshButtonText}>Refresh</ThemedText>
       </TouchableOpacity>
-    </View>
+    </ThemedView>
   );
 }
 
@@ -55,7 +57,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 20,
-    backgroundColor: '#fff',
   },
   title: {
     fontSize: 24,
@@ -64,7 +65,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   chipItem: {
-    backgroundColor: '#f0f0f0',
     padding: 15,
     marginVertical: 5,
     borderRadius: 8,
@@ -75,23 +75,19 @@ const styles = StyleSheet.create({
   },
   chipDescription: {
     fontSize: 14,
-    color: '#333',
     marginTop: 5,
   },
   chipCategory: {
     fontSize: 14,
-    color: '#666',
     marginTop: 5,
   },
   chipTags: {
     fontSize: 14,
-    color: '#007AFF',
     marginTop: 5,
   },
   emptyText: {
     textAlign: 'center',
     fontSize: 16,
-    color: '#999',
     marginTop: 50,
   },
   refreshButton: {

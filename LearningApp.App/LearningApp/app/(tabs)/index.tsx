@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -8,40 +8,61 @@ import {
   StyleSheet,
   ScrollView 
 } from 'react-native';
-import { Link } from 'expo-router';
+import { Link, useFocusEffect } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
-
-const API_BASE = 'http://192.168.31.42:8001'; // Change to your backend IP
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { chipsApi, Chip, StoryCraft, Story } from '@/services/chipsApi';
+import MarkdownViewer from '../../components/markdown-viewer';
 
 export default function ChipLearningScreen() {
-  const [chips, setChips] = useState([]);
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const [chips, setChips] = useState<Chip[]>([]);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState('general');
   const [tags, setTags] = useState<string[]>([]);
   const [currentTag, setCurrentTag] = useState('');
   const [appTitle, setAppTitle] = useState('Fetching title...');
-  const [selectedStory, setSelectedStory] = useState('The Binge Story');
+  const [selectedStory, setSelectedStory] = useState<string>('0');
+  const [storyid, setStoryid] = useState(0);
+  const [storyDrivingPrompt, setStoryDrivingPrompt] = useState('');
+  const [storyOptions, setStoryOptions] = useState<{ id: number; title: string }[]>([{ id: 0, title: 'New Story' }]);
+  const [storyContent, setStoryContent] = useState('story loading...');
+  const [stories, setStories] = useState<Story[]>([]);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [showExplanation, setShowExplanation] = useState(false);
 
-  const stories: Record<string, { text1: string; text2: string }> = {
-    'The Binge Story': {
-      text1: 'In the bustling city of Codeville, a young developer named Alex discovered the magic of React Hooks. One day, while building an app, Alex learned about useState, which allowed components to remember values without classes. This was like having a magical notebook that kept track of thoughts.',
-      text2: 'As Alex delved deeper, they encountered useEffect, a hook that managed side effects like fetching data from afar. It was as if the app could now listen to the whispers of the internet. With these tools, Alex created interactive experiences that danced with user input, turning static pages into living stories.',
-    },
-    'The Adventure Tale': {
-      text1: 'Embark on a journey through the digital wilderness with our hero, the API Fetcher. Armed with async and await, they ventured into the unknown realms of servers, retrieving treasures of data. Each request was a quest, each response a victory.',
-      text2: 'Along the way, they learned about error handling, like shields protecting against unexpected foes. Promises became their loyal companions, ensuring that adventures never ended abruptly. In this tale, every concept is a landmark, every bug a dragon to slay.',
-    },
-    'The Mystery Novel': {
-      text1: 'In the shadowy corridors of Component Castle, a detective named State Inspector unraveled the mysteries of component lifecycles. Props were clues, state was the hidden motive. useEffect was the butler who knew too much.',
-      text2: 'As the plot thickened, they discovered the secrets of conditional rendering, where elements appeared and disappeared like ghosts. Event handlers were the triggers, navigation the plot twists. Each chapter revealed a new layer of the React enigma.',
-    },
-  };
+  const fetchStoryContent = useCallback(async (storyId: number) => {
+    if (storyId === 0) {
+      setStories([]);
+      setCurrentPage(0);
+      setShowExplanation(false);
+      setStoryContent('No story selected. Create a new story or select an existing one.');
+      return;
+    }
+    try {
+      const storyParts: Story[] = await chipsApi.fetchStory(storyId);
+      setStories(storyParts);
+      setCurrentPage(0);
+      setShowExplanation(false);
+      if (storyParts.length > 0) {
+        setStoryContent(storyParts[0].story_content);
+      } else {
+        setStoryContent('No story parts found.');
+      }
+    } catch (error) {
+      console.error('Error fetching story:', error);
+      setStories([]);
+      setCurrentPage(0);
+      setShowExplanation(false);
+      setStoryContent('Failed to load story.');
+    }
+  }, []);
 
   const fetchChips = async () => {
     try {
-      const response = await fetch(`${API_BASE}/chips`);
-      const data = await response.json();
+      const data = await chipsApi.fetchChips();
       setChips(data);
     } catch (error) {
       console.error('Error fetching chips:', error);
@@ -50,13 +71,50 @@ export default function ChipLearningScreen() {
 
   const fetchTitle = async () => {
     try {
-      const response = await fetch(`${API_BASE}/title`);
-      const data = await response.json();
+      const data = await chipsApi.fetchTitle();
       setAppTitle(data.title);
     } catch (error) {
       console.error('Error fetching title:', error);
     }
   };
+
+  const fetchStories = useCallback(async () => {
+    try {
+      const stories: StoryCraft[] = await chipsApi.fetchStoryCrafts();
+      const options = [{ id: 0, title: 'New Story' }, ...stories.map(story => ({ id: story.storyid, title: story.story_title }))];
+      setStoryOptions(options);
+      // Fetch content for default selected story (0)
+      fetchStoryContent(0);
+    } catch (error) {
+      console.error('Error fetching stories:', error);
+    }
+  }, [fetchStoryContent]);
+
+  const toggleExplanation = () => {
+    setShowExplanation(!showExplanation);
+  };
+
+  const nextPage = () => {
+    if (currentPage < stories.length - 1) {
+      setCurrentPage(currentPage + 1);
+      setShowExplanation(false);
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+      setShowExplanation(false);
+    }
+  };
+
+  // Update content when page or explanation changes
+  useEffect(() => {
+    if (stories.length > 0 && currentPage < stories.length) {
+      const currentStory = stories[currentPage];
+      setStoryContent(showExplanation ? currentStory.explanation : currentStory.story_content);
+    }
+  }, [currentPage, showExplanation, stories]);
 
   const addTag = () => {
     if (currentTag.trim() && !tags.includes(currentTag.trim())) {
@@ -73,27 +131,21 @@ export default function ChipLearningScreen() {
     if (!title.trim()) return;
 
     try {
-      const response = await fetch(`${API_BASE}/chips`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: title,
-          description: description,
-          category: category,
-          tags: tags,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }),
+      await chipsApi.addChip({
+        title,
+        description,
+        category,
+        tags,
+        storyid,
+        story_driving_prompt: storyDrivingPrompt || undefined,
       });
       
-      if (response.ok) {
-        setTitle('');
-        setDescription('');
-        setTags([]);
-        fetchChips();
-      }
+      setTitle('');
+      setDescription('');
+      setTags([]);
+      setStoryid(0);
+      setStoryDrivingPrompt('');
+      fetchChips();
     } catch (error) {
       console.error('Error adding chip:', error);
     }
@@ -101,9 +153,7 @@ export default function ChipLearningScreen() {
 
   const deleteChip = async (id: number) => {
     try {
-      await fetch(`${API_BASE}/chips/${id}`, {
-        method: 'DELETE',
-      });
+      await chipsApi.deleteChip(id);
       fetchChips();
     } catch (error) {
       console.error('Error deleting chip:', error);
@@ -113,15 +163,22 @@ export default function ChipLearningScreen() {
   useEffect(() => {
     fetchChips();
     fetchTitle();
-  }, []);
+    fetchStories();
+  }, [fetchStories]);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchStories();
+    }, [fetchStories])
+  );
 
   const renderChip = ({ item }: any) => (
-    <View style={styles.chip}>
+    <View style={[styles.chip, { backgroundColor: isDark ? '#333' : '#fff' }]}>
       <View style={styles.chipContent}>
-        <Text style={styles.chipText}>{item.title}</Text>
-        <Text style={styles.chipDescription}>{item.description}</Text>
-        <Text style={styles.chipCategory}>{item.category}</Text>
-        <Text style={styles.chipTags}>Tags: {item.tags.join(', ')}</Text>
+        <Text style={[styles.chipText, { color: isDark ? '#fff' : '#000' }]}>{item.title}</Text>
+        <Text style={[styles.chipDescription, { color: isDark ? '#ccc' : '#333' }]}>{item.description}</Text>
+        <Text style={[styles.chipCategory, { color: isDark ? '#ccc' : '#666' }]}>{item.category}</Text>
+        <Text style={[styles.chipTags, { color: isDark ? '#007AFF' : '#007AFF' }]}>Tags: {item.tags.join(', ')}</Text>
       </View>
       <TouchableOpacity
         style={styles.deleteButton}
@@ -139,32 +196,60 @@ export default function ChipLearningScreen() {
           <Text style={styles.dashboardButtonText}>View Dashboard</Text>
         </TouchableOpacity>
       </Link>
-      <ScrollView style={styles.container}>
-        <Text style={styles.title}>{appTitle}</Text>
+      <ScrollView style={[styles.container, { backgroundColor: isDark ? '#151718' : '#f5f5f5' }]}>
+        <Text style={[styles.title, { color: isDark ? '#fff' : '#000' }]}>{appTitle}</Text>
       
       <View style={styles.inputContainer}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: isDark ? '#333' : '#fff', color: isDark ? '#fff' : '#000' }]}
           placeholder="Enter chip title..."
+          placeholderTextColor={isDark ? '#ccc' : '#666'}
           value={title}
           onChangeText={setTitle}
         />
         <TextInput
-          style={styles.input}
+          style={[styles.input, { backgroundColor: isDark ? '#333' : '#fff', color: isDark ? '#fff' : '#000' }]}
           placeholder="Enter description..."
+          placeholderTextColor={isDark ? '#ccc' : '#666'}
           value={description}
           onChangeText={setDescription}
         />
         <TextInput
-          style={styles.categoryInput}
+          style={[styles.categoryInput, { backgroundColor: isDark ? '#333' : '#fff', color: isDark ? '#fff' : '#000' }]}
           placeholder="Category"
+          placeholderTextColor={isDark ? '#ccc' : '#666'}
           value={category}
           onChangeText={setCategory}
         />
+        <View style={styles.storyRow}>
+          <Picker
+            selectedValue={storyid}
+            onValueChange={(itemValue: number) => setStoryid(itemValue)}
+            style={[styles.picker, { color: isDark ? '#fff' : '#000', flex: 1 }]}
+          >
+            {storyOptions.map((story) => (
+              <Picker.Item key={story.id} label={story.title} value={story.id} />
+            ))}
+          </Picker>
+          <Link href="/add-story" asChild>
+            <TouchableOpacity style={styles.addStoryButton}>
+              <Text style={styles.addStoryButtonText}>Add Storycraft</Text>
+            </TouchableOpacity>
+          </Link>
+        </View>
+        <TextInput
+          style={[styles.input, { backgroundColor: isDark ? '#333' : '#fff', color: isDark ? '#fff' : '#000', height: 80 }]}
+          placeholder="Story driving prompt (optional)..."
+          placeholderTextColor={isDark ? '#ccc' : '#666'}
+          value={storyDrivingPrompt}
+          onChangeText={setStoryDrivingPrompt}
+          multiline
+        />
         <View style={styles.tagsContainer}>
           <TextInput
-            style={styles.tagInput}
+            style={[styles.tagInput, { backgroundColor: isDark ? '#333' : '#fff', color: isDark ? '#fff' : '#000' }]}
             placeholder="Enter a tag..."
+            placeholderTextColor={isDark ? '#ccc' : '#666'}
             value={currentTag}
             onChangeText={setCurrentTag}
           />
@@ -174,8 +259,8 @@ export default function ChipLearningScreen() {
         </View>
         <View style={styles.tagsList}>
           {tags.map((tag, index) => (
-            <View key={index} style={styles.tag}>
-              <Text style={styles.tagText}>{tag}</Text>
+            <View key={index} style={[styles.tag, { backgroundColor: isDark ? '#444' : '#e1f5fe' }]}>
+              <Text style={[styles.tagText, { color: isDark ? '#fff' : '#000' }]}>{tag}</Text>
               <TouchableOpacity onPress={() => removeTag(tag)}>
                 <Text style={styles.removeTagText}>×</Text>
               </TouchableOpacity>
@@ -187,25 +272,40 @@ export default function ChipLearningScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.storyCard}>
-        <Text style={styles.storyTitle}>Today&apos;s Story to Remember</Text>
+      <View style={[styles.storyCard, { backgroundColor: isDark ? '#333' : '#fff' }]}>
+        <View style={styles.storyHeader}>
+          <Text style={[styles.storyTitle, { color: isDark ? '#fff' : '#000' }]}>Today&apos;s Story to Remember</Text>
+          <TouchableOpacity onPress={toggleExplanation} style={styles.bulbButton}>
+            <Text style={styles.bulbText}>💡</Text>
+          </TouchableOpacity>
+        </View>
         <Picker
           selectedValue={selectedStory}
-          onValueChange={(itemValue: string) => setSelectedStory(itemValue)}
-          style={styles.picker}
+          onValueChange={(itemValue: string) => {
+            setSelectedStory(itemValue);
+            fetchStoryContent(parseInt(itemValue));
+          }}
+          style={[styles.picker, { color: isDark ? '#fff' : '#000' }]}
         >
-          {Object.keys(stories).map((storyKey) => (
-            <Picker.Item key={storyKey} label={storyKey} value={storyKey} />
+          {storyOptions.map((story) => (
+            <Picker.Item key={story.id} label={story.title} value={story.id.toString()} />
           ))}
         </Picker>
-        <Text style={styles.storyText}>
-          {stories[selectedStory].text1}
-        </Text>
-        <Text style={styles.storyText}>
-          {stories[selectedStory].text2}
-        </Text>
-        <Text style={styles.storyText}>...</Text>
-        <Text style={styles.storyNote}>
+        <MarkdownViewer content={storyContent} />
+        {stories.length > 1 && (
+          <View style={styles.paginationContainer}>
+            <TouchableOpacity onPress={prevPage} disabled={currentPage === 0} style={[styles.pageButton, currentPage === 0 && styles.disabledButton]}>
+              <Text style={styles.pageButtonText}>Prev</Text>
+            </TouchableOpacity>
+            <Text style={[styles.pageIndicator, { color: isDark ? '#fff' : '#000' }]}>
+              {currentPage + 1} / {stories.length}
+            </Text>
+            <TouchableOpacity onPress={nextPage} disabled={currentPage === stories.length - 1} style={[styles.pageButton, currentPage === stories.length - 1 && styles.disabledButton]}>
+              <Text style={styles.pageButtonText}>Next</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        <Text style={[styles.storyNote, { color: isDark ? '#ccc' : '#666' }]}>
           This presents to you the concepts you learnt like a story that you can remember and never forget.
         </Text>
       </View>
@@ -395,5 +495,57 @@ const styles = StyleSheet.create({
   picker: {
     height: 50,
     marginBottom: 10,
+  },
+  storyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  addStoryButton: {
+    backgroundColor: '#32CD32',
+    padding: 10,
+    borderRadius: 5,
+    marginLeft: 10,
+  },
+  addStoryButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  storyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  bulbButton: {
+    padding: 5,
+  },
+  bulbText: {
+    fontSize: 20,
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  pageButton: {
+    backgroundColor: '#007AFF',
+    padding: 10,
+    borderRadius: 5,
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  pageButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  pageIndicator: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  disabledButton: {
+    backgroundColor: '#ccc',
   },
 });

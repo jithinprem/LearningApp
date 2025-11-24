@@ -28,6 +28,17 @@ export interface Story {
   created_time: string;
 }
 
+export interface Question {
+  id: number;
+  chipid: number;
+  question: string;
+  solution: string;
+  created_time: string;
+  widget_date: string;
+  shown: boolean;
+  count: number;
+}
+
 export const chipsApi = {
   // Fetch all chips
   fetchChips: async (): Promise<Chip[]> => {
@@ -133,6 +144,33 @@ export const chipsApi = {
       return await response.json();
     } catch (error) {
       console.error('Error generating story:', error);
+      throw error;
+    }
+  },
+
+  // Get questions (today's or random)
+  getQuestions: async (currentDate: boolean = true): Promise<Question | Question[] | { message: string }> => {
+    try {
+      const response = await fetch(`${API_BASE}/questions/?current_date=${currentDate}`);
+      if (!response.ok) throw new Error('Failed to fetch questions');
+      return await response.json();
+    } catch (error) {
+      console.error('Error fetching questions:', error);
+      throw error;
+    }
+  },
+
+  // Update next date for a question
+  updateQuestionNextDate: async (questionId: number): Promise<Question> => {
+    try {
+      const response = await fetch(`${API_BASE}/questions/next/${questionId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) throw new Error('Failed to update question next date');
+      return await response.json();
+    } catch (error) {
+      console.error('Error updating question next date:', error);
       throw error;
     }
   },

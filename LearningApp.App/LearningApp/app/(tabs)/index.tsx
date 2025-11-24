@@ -8,11 +8,11 @@ import {
   StyleSheet,
   ScrollView 
 } from 'react-native';
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect, router } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { chipsApi, Chip, StoryCraft, Story } from '@/services/chipsApi';
-import MarkdownViewer from '../../components/markdown-viewer';
+import QuestionWidget from '@/components/question-widget';
 
 export default function ChipLearningScreen() {
   const colorScheme = useColorScheme();
@@ -30,22 +30,16 @@ export default function ChipLearningScreen() {
   const [storyOptions, setStoryOptions] = useState<{ id: number; title: string }[]>([{ id: 0, title: 'New Story' }]);
   const [storyContent, setStoryContent] = useState('story loading...');
   const [stories, setStories] = useState<Story[]>([]);
-  const [currentPage, setCurrentPage] = useState(0);
-  const [showExplanation, setShowExplanation] = useState(false);
 
   const fetchStoryContent = useCallback(async (storyId: number) => {
     if (storyId === 0) {
       setStories([]);
-      setCurrentPage(0);
-      setShowExplanation(false);
       setStoryContent('No story selected. Create a new story or select an existing one.');
       return;
     }
     try {
       const storyParts: Story[] = await chipsApi.fetchStory(storyId);
       setStories(storyParts);
-      setCurrentPage(0);
-      setShowExplanation(false);
       if (storyParts.length > 0) {
         setStoryContent(storyParts[0].story_content);
       } else {
@@ -54,8 +48,6 @@ export default function ChipLearningScreen() {
     } catch (error) {
       console.error('Error fetching story:', error);
       setStories([]);
-      setCurrentPage(0);
-      setShowExplanation(false);
       setStoryContent('Failed to load story.');
     }
   }, []);
@@ -89,32 +81,6 @@ export default function ChipLearningScreen() {
       console.error('Error fetching stories:', error);
     }
   }, [fetchStoryContent]);
-
-  const toggleExplanation = () => {
-    setShowExplanation(!showExplanation);
-  };
-
-  const nextPage = () => {
-    if (currentPage < stories.length - 1) {
-      setCurrentPage(currentPage + 1);
-      setShowExplanation(false);
-    }
-  };
-
-  const prevPage = () => {
-    if (currentPage > 0) {
-      setCurrentPage(currentPage - 1);
-      setShowExplanation(false);
-    }
-  };
-
-  // Update content when page or explanation changes
-  useEffect(() => {
-    if (stories.length > 0 && currentPage < stories.length) {
-      const currentStory = stories[currentPage];
-      setStoryContent(showExplanation ? currentStory.explanation : currentStory.story_content);
-    }
-  }, [currentPage, showExplanation, stories]);
 
   const addTag = () => {
     if (currentTag.trim() && !tags.includes(currentTag.trim())) {
@@ -198,6 +164,12 @@ export default function ChipLearningScreen() {
       </Link>
       <ScrollView style={[styles.container, { backgroundColor: isDark ? '#151718' : '#f5f5f5' }]}>
         <Text style={[styles.title, { color: isDark ? '#fff' : '#000' }]}>{appTitle}</Text>
+        
+        {/* Question Widget */}
+        <View style={styles.widgetSection}>
+          <Text style={[styles.sectionTitle, { color: isDark ? '#fff' : '#000' }]}>Daily Question</Text>
+          <QuestionWidget onSwipe={(direction) => console.log(`Swiped ${direction}`)} />
+        </View>
       
       <View style={styles.inputContainer}>
         <TextInput
@@ -272,12 +244,16 @@ export default function ChipLearningScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.storyCard, { backgroundColor: isDark ? '#333' : '#fff' }]}>
+      <TouchableOpacity
+        style={[styles.storyCard, { backgroundColor: isDark ? '#333' : '#fff' }]}
+        onPress={() => {
+          if (selectedStory !== '0') {
+            router.push(`/story-view?storyId=${selectedStory}`);
+          }
+        }}
+      >
         <View style={styles.storyHeader}>
           <Text style={[styles.storyTitle, { color: isDark ? '#fff' : '#000' }]}>Today&apos;s Story to Remember</Text>
-          <TouchableOpacity onPress={toggleExplanation} style={styles.bulbButton}>
-            <Text style={styles.bulbText}>💡</Text>
-          </TouchableOpacity>
         </View>
         <Picker
           selectedValue={selectedStory}
@@ -291,24 +267,28 @@ export default function ChipLearningScreen() {
             <Picker.Item key={story.id} label={story.title} value={story.id.toString()} />
           ))}
         </Picker>
-        <MarkdownViewer content={storyContent} />
-        {stories.length > 1 && (
-          <View style={styles.paginationContainer}>
-            <TouchableOpacity onPress={prevPage} disabled={currentPage === 0} style={[styles.pageButton, currentPage === 0 && styles.disabledButton]}>
-              <Text style={styles.pageButtonText}>Prev</Text>
-            </TouchableOpacity>
-            <Text style={[styles.pageIndicator, { color: isDark ? '#fff' : '#000' }]}>
-              {currentPage + 1} / {stories.length}
+
+        {/* Story Preview */}
+        <View style={styles.storyPreview}>
+          <Text style={[styles.previewText, { color: isDark ? '#fff' : '#000' }]}>
+            {storyContent.length > 150 ? `${storyContent.substring(0, 150)}...` : storyContent}
+          </Text>
+          {stories.length > 1 && (
+            <Text style={[styles.partsText, { color: isDark ? '#ccc' : '#666' }]}>
+              {stories.length} parts available
             </Text>
-            <TouchableOpacity onPress={nextPage} disabled={currentPage === stories.length - 1} style={[styles.pageButton, currentPage === stories.length - 1 && styles.disabledButton]}>
-              <Text style={styles.pageButtonText}>Next</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          )}
+          {selectedStory !== '0' && (
+            <Text style={[styles.tapText, { color: '#007AFF' }]}>
+              Tap to read full story
+            </Text>
+          )}
+        </View>
+
         <Text style={[styles.storyNote, { color: isDark ? '#ccc' : '#666' }]}>
           This presents to you the concepts you learnt like a story that you can remember and never forget.
         </Text>
-      </View>
+      </TouchableOpacity>
 
       <FlatList
         data={chips}
@@ -518,34 +498,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 10,
   },
-  bulbButton: {
-    padding: 5,
-  },
-  bulbText: {
-    fontSize: 20,
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  storyPreview: {
     marginBottom: 10,
   },
-  pageButton: {
-    backgroundColor: '#007AFF',
-    padding: 10,
-    borderRadius: 5,
-    minWidth: 60,
-    alignItems: 'center',
+  previewText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 5,
   },
-  pageButtonText: {
-    color: 'white',
+  partsText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginBottom: 5,
+  },
+  tapText: {
+    fontSize: 12,
     fontWeight: 'bold',
   },
-  pageIndicator: {
-    fontSize: 16,
-    fontWeight: 'bold',
+  widgetSection: {
+    marginBottom: 20,
   },
-  disabledButton: {
-    backgroundColor: '#ccc',
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
   },
 });
